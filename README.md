@@ -80,6 +80,44 @@ The scheduler finds pairs of tasks whose time windows `[start, start + duration)
 
 ---
 
+## Testing PawPal+
+
+### Run the test suite
+
+```bash
+python -m pytest
+```
+
+Add `-v` for verbose output showing every individual test name:
+
+```bash
+python -m pytest -v
+```
+
+### What the tests cover
+
+The suite lives in `tests/test_pawpal.py` and contains **72 tests** across 8 test classes:
+
+| Class | What is verified |
+|---|---|
+| `TestTask` | `mark_complete/incomplete`, `priority_rank`, `scheduled_start_minutes`, `__str__` |
+| `TestPet` | `add/remove_task`, `get_tasks_by_category/priority`, `total_care_minutes`, `pending_tasks` |
+| `TestOwner` | `add/remove/get_pet` (including case-insensitivity), `all_tasks`, `total_tasks` |
+| `TestScheduler` | `load_tasks`, `sort_by_priority`, `generate_daily_plan` (budget + mandatory meds), `detect_conflicts`, `explain_plan`, `apply_recurring_tasks` |
+| `TestSortByTime` | Chronological order, untimed-tasks-last, non-mutation of queue, single-task and all-untimed edge cases |
+| `TestRecurrence` | `next_occurrence()` for daily (+1d), weekly (+7d), twice-daily (same day); non-recurring returns `''`; fixed-date determinism |
+| `TestConflicts` | Exact same time, adjacent (no overlap), partial overlap, fully-contained, 3-way overlap, `conflict_warnings` string content, untimed tasks never conflict |
+| `TestFilterTasks` | Filter by pet name, completion status, category, combined AND conditions, no-match → empty list, non-mutation |
+| `TestEdgeCases` | Pet/owner with no tasks, empty scheduler plan, zero-minute budget (meds still included), single task fits/excluded, no-recurring returns `[]` |
+
+### Confidence level
+
+**4 / 5 stars**
+
+The happy paths (sorting, filtering, plan generation, conflict detection) and the most important edge cases (empty pets, zero budget, mandatory meds, adjacent-but-not-overlapping times) are all covered and passing. The remaining gap is integration-level testing — e.g., verifying that changes made via the Streamlit UI are correctly reflected in `st.session_state` across re-renders. Those tests would require Streamlit's testing utilities and are the logical next step.
+
+---
+
 ### Suggested workflow
 
 1. Read the scenario carefully and identify requirements and edge cases.

@@ -134,13 +134,28 @@ The tradeoff is that the algorithm has no awareness of *which pet* the tasks bel
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The test suite covers 72 cases across 8 areas:
+
+1. **Sorting correctness** (`TestSortByTime`) — verifies that `sort_by_time()` returns tasks in ascending HH:MM order, places untimed tasks after all timed ones, and does not mutate the queue. Tasks were added deliberately out of order to confirm the sort isn't just preserving insertion order.
+
+2. **Recurrence logic** (`TestRecurrence`) — confirms `next_occurrence()` returns tomorrow for "daily", +7 days for "weekly", and the same day for "twice daily". Uses a fixed `from_date` parameter so tests aren't sensitive to the wall clock. Also verifies that non-recurring tasks return `""`.
+
+3. **Conflict detection** (`TestConflicts`) — verifies partial overlap, full containment, exact same start time, 3-way overlaps, and the boundary condition where adjacent tasks (`[08:00, 08:30)` and `[08:30, ...)`) do NOT conflict. Also checks that `conflict_warnings()` returns strings naming both tasks.
+
+4. **Filtering** (`TestFilterTasks`) — verifies AND-combination of pet name, completion status, and category filters; confirms no mutation of the underlying queue.
+
+5. **Edge cases** (`TestEdgeCases`) — empty pets, empty owner, zero-minute budget (only meds allowed through), single task that fits vs. doesn't fit, no recurring tasks returns empty list.
+
+These tests matter because the greedy scheduler, conflict detector, and filter logic all have subtle boundary conditions. Without tests, it would be easy to ship a planner that silently drops medication tasks or incorrectly flags non-overlapping tasks as conflicts.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+**4 / 5 stars.** All 72 tests pass. The core algorithms (sort, filter, plan generation, conflict detection, recurrence) are thoroughly covered on both happy paths and edge cases. The remaining gap is Streamlit UI integration — testing that `st.session_state` correctly persists `Owner` and `Scheduler` objects across re-renders requires Streamlit's `AppTest` framework, which is the logical next testing investment.
+
+Edge cases to add with more time:
+- An owner with 10+ pets and 50+ tasks (performance/stress test of the O(n²) conflict detector)
+- Tasks where `duration_minutes == 0`
+- Malformed `scheduled_time` strings (e.g. `"8:0"`, `"noon"`) to verify graceful fallback in `scheduled_start_minutes()`
 
 ---
 
