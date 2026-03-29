@@ -86,8 +86,11 @@ classDiagram
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Two design changes were made during implementation:
+
+1. **`completed` flag added to `Task`** — The original UML had no completion state. Once `mark_complete()` was needed for the UI checkboxes and the `filter_tasks(completed=False)` filter, a boolean `completed` field was added to the dataclass. This is a natural extension that the UML omitted.
+
+2. **`due_date` + `next_occurrence()` added to `Task`** — The original design treated recurrence as a simple label string. In Phase 4, recurring tasks needed to compute an actual next date using `timedelta`. Rather than putting this logic in the Scheduler (which would have needed to know the date arithmetic), it was added directly to `Task` so each task owns its own scheduling math. This keeps the Scheduler focused on ordering and filtering.
 
 ---
 
@@ -95,13 +98,21 @@ classDiagram
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three constraints, in order of importance:
+
+1. **Mandatory category** — Any task with `category == 'medication'` is always included regardless of budget. Missing medication is the highest-risk outcome for a pet owner.
+2. **Time budget** — `Owner.available_minutes` acts as a hard cap. The greedy algorithm fills the budget from highest to lowest priority, stopping when no remaining task fits.
+3. **Priority level** — Within the budget, `high` tasks are selected before `medium` and `low`. Ties are broken by duration (shorter first) to maximise the number of tasks that fit.
+
+Mandatory status was ranked above time budget because the cost of skipping medication is potentially medical harm, whereas skipping a grooming session has no health consequence.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**Tradeoff: interval-overlap conflict detection vs. exact-time-match only**
+
+The conflict detector checks whether two tasks' time windows `[start, start + duration)` overlap, rather than just flagging tasks at identical start times. This catches realistic conflicts — e.g., a 30-minute walk starting at 07:30 overlaps with a feeding starting at 07:45 — and is still O(n²) in the number of timed tasks.
+
+The tradeoff is that the algorithm has no awareness of *which pet* the tasks belong to. Two tasks for different pets that overlap are still flagged as conflicts, even though a real owner could handle them simultaneously. This is a safe over-approximation: it produces false positives (extra warnings) but never misses a genuine conflict. For a solo-owner app with a small task count (<20), the false-positive rate is acceptable and the simplicity of the implementation is worth it.
 
 ---
 

@@ -9,6 +9,7 @@ The Streamlit UI (app.py) imports from this module.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import List, Optional
 
 
@@ -44,6 +45,7 @@ class Task:
     scheduled_time: str = ""   # HH:MM format, empty = flexible
     notes: str = ""
     completed: bool = False
+    due_date: str = ""  # ISO date string 'YYYY-MM-DD'; empty = no fixed date
 
     # ------------------------------------------------------------------
     # Helpers
@@ -60,6 +62,31 @@ class Task:
     def mark_incomplete(self) -> None:
         """Reset this task to incomplete."""
         self.completed = False
+
+    def next_occurrence(self, from_date: Optional[date] = None) -> str:
+        """Return the ISO date string of the next occurrence for a recurring task.
+
+        Uses Python's timedelta to advance from *from_date* (defaults to today)
+        based on recurrence_pattern:
+            'daily'       -> +1 day
+            'twice daily' -> +0 days (same day, second slot)
+            'weekly'      -> +7 days
+            anything else -> +1 day (safe default)
+
+        Returns:
+            ISO date string 'YYYY-MM-DD', or '' if the task is not recurring.
+        """
+        if not self.is_recurring:
+            return ""
+        base = from_date or date.today()
+        pattern = self.recurrence_pattern.lower()
+        if "week" in pattern:
+            delta = timedelta(weeks=1)
+        elif "twice" in pattern:
+            delta = timedelta(days=0)  # same day; caller handles the second slot
+        else:
+            delta = timedelta(days=1)
+        return (base + delta).isoformat()
 
     def scheduled_start_minutes(self) -> Optional[int]:
         """Parse scheduled_time ('HH:MM') into minutes-since-midnight, or None."""
@@ -259,6 +286,75 @@ class Scheduler:
             self.task_queue,
             key=lambda t: (-t.priority_rank(), t.duration_minutes),
         )
+
+    def sort_by_time(self) -> List[Task]:
+        """Return tasks sorted by scheduled_time (HH:MM), untimed tasks at the end.
+
+        Uses a lambda with a tuple key so that Python's built-in sorted()
+        handles the comparison cleanly:
+          - Timed tasks sort ascending by their 'HH:MM' string (lexicographic
+            order is correct for zero-padded 24-h clock strings).
+          - Untimed tasks (empty scheduled_time) sort last via the (1, '') key
+            versus (0, 'HH:MM') for timed ones.
+        """
+        return sorted(
+            self.task_queue,
+            key=lambda t: (0, t.scheduled_time) if t.scheduled_time else (1, ""),
+        )
+
+    def filter_tasks(
+        self,
+        pet_name: Optional[str] = None,
+        completed: Optional[bool] = None,
+        category: Optional[str] = None,
+    ) -> List[Task]:
+        """Return a filtered view of task_queue without modifying it.
+
+        All non-None arguments are applied as AND conditions.
+
+        Args:
+            pet_name:  Keep only tasks belonging to the named pet
+                       (case-insensitive).  Requires self.owner to be set.
+            completed: True = keep only done tasks; False = keep only pending.
+            category:  Keep only tasks whose category matches (case-insensitive).
+
+        Returns:
+            Filtered list of Task objects.
+        """
+        # Build a pet-name → tasks lookup so we can filter by owner's pet
+        pet_task_map: dict[int, str] = {}   # id(task) -> pet.name
+        for pet in self.owner.pets:
+            for task in pet.tasks:
+                pet_task_map[id(task)] = pet.name.lower()
+
+        results = self.task_queue
+        if pet_name is not None:
+            target = pet_name.lower()
+            results = [t for t in results if pet_task_map.get(id(t)) == target]
+        if completed is not None:
+            results = [t for t in results if t.completed == completed]
+        if category is not None:
+            target_cat = category.lower()
+            results = [t for t in results if t.category.lower() == target_cat]
+        return results
+
+    def conflict_warnings(self) -> List[str]:
+        """Return human-readable warning strings for each detected time conflict.
+
+        Converts the raw (Task, Task) pairs from detect_conflicts() into
+        plain-English messages safe to display in a UI or terminal without
+        raising an exception.
+
+        Returns:
+            List of warning strings; empty list means no conflicts.
+        """
+        warnings: List[str] = []
+        for a, b in self.detect_conflicts():
+            warnings.append(
+                f"[CONFLICT] '{a.title}' ({a.scheduled_time}, {a.duration_minutes} min) "
+                f"overlaps with '{b.title}' ({b.scheduled_time}, {b.duration_minutes} min)"
+            )
+        return warnings
 
     def detect_conflicts(self) -> List[tuple]:
         """Find pairs of tasks whose scheduled_time windows overlap.

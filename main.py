@@ -136,35 +136,55 @@ def main() -> None:
     print_section("Scheduler Summary")
     print(scheduler.summary())
 
-    # ── 3. Conflict detection ─────────────────────────────────────────
-    print_section("Conflict Check")
-    conflicts = scheduler.detect_conflicts()
-    if conflicts:
-        print(f"  {len(conflicts)} conflict(s) detected:")
-        for a, b in conflicts:
-            print(f"    [!] '{a.title}' overlaps with '{b.title}'")
+    # ── 3. Sort by time (timed first, untimed at end) ────────────────
+    print_section("Sort by Scheduled Time")
+    by_time = scheduler.sort_by_time()
+    for t in by_time:
+        time_label = t.scheduled_time if t.scheduled_time else "(no time set)"
+        print(f"  {time_label:<10}  {t.title}")
+
+    # ── 4. Filter: Mochi's tasks only ────────────────────────────────
+    print_section("Filter: Mochi's Tasks")
+    mochi_tasks = scheduler.filter_tasks(pet_name="Mochi")
+    for t in mochi_tasks:
+        print(f"  {t}")
+
+    # ── 5. Conflict detection (human-readable warnings) ───────────────
+    print_section("Conflict Warnings")
+    warnings = scheduler.conflict_warnings()
+    if warnings:
+        for w in warnings:
+            print(f"  {w}")
     else:
         print("  No scheduling conflicts found.")
 
-    # ── 4. Today's plan ───────────────────────────────────────────────
+    # ── 6. Today's plan ───────────────────────────────────────────────
     print_section("Today's Schedule")
     plan = scheduler.generate_daily_plan()
     print(scheduler.explain_plan(plan))
 
-    # ── 5. Recurring tasks (next 3 days preview) ──────────────────────
-    print_section("Recurring Tasks (next 3 days)")
-    weekly = scheduler.apply_recurring_tasks(days=3)
-    for day_num, day_tasks in enumerate(weekly, start=1):
-        titles = ", ".join(t.title for t in day_tasks) or "none"
-        print(f"  Day {day_num}: {titles}")
+    # ── 7. Recurring tasks — next occurrence via timedelta ────────────
+    print_section("Next Occurrences (recurring tasks)")
+    for t in scheduler.get_recurring_tasks():
+        next_date = t.next_occurrence()
+        print(f"  {t.title:<30}  next: {next_date}  ({t.recurrence_pattern})")
 
-    # ── 6. mark_complete demo ─────────────────────────────────────────
-    print_section("Mark a Task Complete")
+    # ── 8. mark_complete + next occurrence demo ───────────────────────
+    print_section("Mark Complete -> Next Occurrence")
     if plan:
         first = plan[0]
         print(f"  Marking '{first.title}' as complete...")
         first.mark_complete()
-        print(f"  Status: {'DONE' if first.completed else 'pending'}")
+        print(f"  Status   : {'DONE' if first.completed else 'pending'}")
+        if first.is_recurring:
+            print(f"  Next due : {first.next_occurrence()}")
+
+    # ── 9. Filter: pending tasks only ─────────────────────────────────
+    print_section("Filter: Pending Tasks After Completion")
+    pending = scheduler.filter_tasks(completed=False)
+    print(f"  {len(pending)} pending task(s) remaining:")
+    for t in pending:
+        print(f"    {t}")
 
     print("\n" + "=" * 60)
     print("  Demo complete — all systems nominal!")
