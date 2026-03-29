@@ -120,13 +120,24 @@ The tradeoff is that the algorithm has no awareness of *which pet* the tasks bel
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI was used in three distinct modes across the project phases:
+
+1. **Design brainstorming (Phase 1)** — Asked AI to generate a Mermaid.js UML diagram from a natural-language description of the four classes. This was the fastest way to produce a visual blueprint before writing any code. The most effective prompt style was specific and scoped: *"Generate a Mermaid class diagram for a pet care scheduler with Owner, Pet, Task, and Scheduler classes. Owner has many Pets, Pet has many Tasks."* Vague prompts ("make a pet app") produced over-engineered designs with unnecessary abstractions.
+
+2. **Scaffolding and stub generation (Phase 1–2)** — Used AI to turn the UML into Python dataclass skeletons with typed method stubs. This saved significant boilerplate time. The most useful prompt was: *"Convert this UML to Python dataclasses. Use `field(default_factory=list)` for list attributes and include method stubs with TODO comments."*
+
+3. **Test generation (Phase 5)** — Used AI to draft edge-case tests by describing the boundary condition in plain English: *"Write a pytest test that verifies two tasks with adjacent (not overlapping) time windows produce no conflict."* AI reliably produced syntactically correct pytest code, though the assertions sometimes needed adjustment to match the actual method signatures.
+
+4. **Debugging** — When `filter_tasks()` initially returned wrong results for pet-name filtering, asked AI: *"Why would a filter that compares `id(task)` to a dict lose matches?"* This surfaced the insight that task objects must be the same Python objects (not copies) for identity comparison to work — a subtle issue AI diagnosed correctly.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+AI initially suggested storing `pet_name` directly on each `Task` object (a `pet_name: str` field) to make `filter_tasks` simpler. The suggestion was rejected for two reasons:
+
+1. **Redundancy** — The pet name is already known from the `Pet` object that owns the task. Duplicating it on `Task` would mean two sources of truth that could diverge if a pet was renamed.
+2. **Encapsulation** — A `Task` is a standalone activity. It shouldn't know which pet it belongs to; that relationship is the `Pet`'s responsibility.
+
+The chosen alternative — building a `{id(task): pet.name}` lookup inside `filter_tasks` by walking `owner.pets` — was verified by running the `TestFilterTasks` suite (8 tests) which confirmed correct behaviour for both single-condition and AND-combined filters.
 
 ---
 
@@ -163,12 +174,20 @@ Edge cases to add with more time:
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The part of the project most worth highlighting is the **CLI-first workflow**. By building and verifying all logic in `pawpal_system.py` and `main.py` before touching `app.py`, bugs were caught at the unit level — where the feedback loop is instant — rather than during UI testing, where diagnosing state issues in Streamlit is much harder. The 72-test suite is a direct product of this approach: because the logic is cleanly separated from the UI, every method can be tested in isolation.
+
+The **conflict detection boundary condition** (adjacent tasks are not conflicts) is also satisfying. The interval math `a_start < b_end and b_start < a_end` correctly handles the edge case where one task ends at exactly the same minute another starts, and this is explicitly verified in `TestConflicts::test_adjacent_tasks_are_not_conflicts`.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+Two improvements for a next iteration:
+
+1. **Pet-aware conflict detection** — The current detector flags tasks from different pets as conflicts even if the owner could handle them simultaneously (e.g., letting two pets eat at the same time). Adding a `same_pet_only` option to `detect_conflicts` would reduce false positives.
+
+2. **Streamlit integration tests** — The app is tested purely at the backend level. Adding `streamlit.testing.v1.AppTest`-based tests would verify that UI interactions (submitting the owner form, clicking "Generate schedule") correctly update `st.session_state` and re-render the expected components.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important lesson was that **AI is most valuable as a first-draft accelerator, not a decision-maker**. AI generated working code quickly — class skeletons, test stubs, Mermaid diagrams — but it consistently over-engineered or made opinionated choices that didn't fit the problem. The `pet_name` field on `Task` is one example; another was an early AI suggestion to use a priority queue (`heapq`) for scheduling, which was technically faster than `sorted()` but unnecessary for a list that never exceeds ~20 items and harder for a reader to understand.
+
+Being the "lead architect" meant knowing when to accept AI output, when to redirect it with a more specific prompt, and when to reject it outright and write the 5-line version yourself. That judgment — not the code generation — is the skill worth developing.
